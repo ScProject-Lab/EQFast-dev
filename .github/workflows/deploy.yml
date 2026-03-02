@@ -1,24 +1,22 @@
-name: Deploy to GitHub Pages
+name: Deploy to Public
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Push to public repo
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.DEPLOY_TOKEN }}
         with:
-          path: '.'
-      - uses: actions/deploy-pages@v4
-        id: deployment
+          source-directory: '.'
+          destination-github-username: 'yourname'
+          destination-repository-name: 'myapp'
+          target-branch: main

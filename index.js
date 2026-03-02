@@ -11,7 +11,19 @@ const CONFIG = {
 
     get updateInterval() {
         return this.isTest ? 10000 : 2000;
-    }
+    },
+
+    // テストモード用の基準時刻
+    testBaseTime: new Date("2024-01-01T16:10:10"),
+    _testStartedAt: Date.now(),
+
+    getSimulatedTime() {
+        if (!this.isTest) {
+            return new Date(Date.now() - 2000);
+        }
+        const elapsed = Date.now() - this._testStartedAt;
+        return new Date(this.testBaseTime.getTime() + elapsed);
+    },
 };
 //=====
 
@@ -83,6 +95,9 @@ map.createPane("shindo70").style.zIndex = 70;
 map.createPane("shingen").style.zIndex = 100;
 map.createPane("tsunami_map").style.zIndex = 110;
 
+map.createPane("pwave").style.zIndex = 80;
+map.createPane("swave").style.zIndex = 81;
+
 let shindoLayer = L.layerGroup().addTo(map);
 let shindoFilledLayer = L.layerGroup().addTo(map);
 let JMAPointsJson = null;
@@ -91,6 +106,16 @@ let hypoMarker = null;
 let stationMap = {};
 let japan_data = null;
 let filled_list = {};
+
+var pwave = L.circle([0, 0], {
+    radius: 0, pane: "pwave",
+    color: 'blue', fillColor: '#399ade', fillOpacity: 0.5,
+}).addTo(map);
+
+var swave = L.circle([0, 0], {
+    radius: 0, pane: "swave",
+    color: '#dc143c', fillColor: '#dc143c', fillOpacity: 0.1,
+}).addTo(map);
 
 const PolygonLayer_Style = {
     "color": "#dde0e5",
@@ -335,6 +360,7 @@ function updateData() {
         drawShindoPoints(latest.points);
 
         updateEarthquakeParam(time, map_maxscale, hyponame, magnitude, depth, domesticTsunami);
+
         trySpeakEarthquake({
             time,
             scale:    map_maxscale,
@@ -767,3 +793,50 @@ function trySpeakEarthquake({ time, scale, name, magnitude, depth, tsunami, rawS
         window.speechSynthesis.speak(utter);
     });
 })();
+
+function getFormattedTime(date) {
+    const year   = date.getFullYear();
+    const month  = String(date.getMonth() + 1).padStart(2, "0");
+    const day    = String(date.getDate()).padStart(2, "0");
+    const hour   = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    const second = String(date.getSeconds()).padStart(2, "0");
+
+    return {
+        dateStr: `${year}${month}${day}`,
+        timeStr: `${year}${month}${day}${hour}${minute}${second}`
+    };
+}
+
+function updatePSWave() {
+    const now = CONFIG.getSimulatedTime();
+    const { dateStr, timeStr } = getFormattedTime(now);
+
+    $.getJSON(`https://weather-kyoshin.west.edge.storage-yahoo.jp/RealTimeData/${dateStr}/${timeStr}.json?${now.getTime()}`)
+    .done(function(yahoo_data) {
+        if (!yahoo_data.psWave) {
+            swave.setRadius(0);
+            pwave.setRadius(0);
+            return;
+        }
+
+        const item = yahoo_data.psWave.items[0];
+        const p = item.pRadius * 1000;
+        const s = item.sRadius * 1000;
+        const lat = item.latitude.replace("N", "");
+        const lng = item.longitude.replace("E", "");
+        const center = new L.LatLng(lat, lng);
+
+        pwave.setLatLng(center);
+        pwave.setRadius(p);
+        swave.setLatLng(center);
+        swave.setRadius(s);
+    })
+    .fail(function() {
+        swave.setRadius(0);
+        pwave.setRadius(0);
+    });
+}
+
+setInterval(updatePSWave, 1000);
+updatePSWave();
