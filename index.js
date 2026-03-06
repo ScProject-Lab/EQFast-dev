@@ -500,7 +500,8 @@ function updateMarker(hypoLatLng, hypoIconImage) {
 }
 
 function updateEarthquakeParam(time, scale, name, magnitude, depth, tsunami) {
-    const latest_maxscale = document.querySelector(".latest-card_maxscale");
+    const card = document.querySelector(".latest-card");
+    const latest_maxscale = card.querySelector(".latest-card_maxscale");
 
     Object.values(scaleClassMap).forEach(cls => latest_maxscale.classList.remove(cls));
 
@@ -523,7 +524,7 @@ function updateEarthquakeParam(time, scale, name, magnitude, depth, tsunami) {
         label.style.color = "";
     }
 
-    document.getElementsByClassName("latest-card_location")[0].textContent = name;
+    card.querySelector(".latest-card_location").textContent = name;
 
     const date = new Date(time);
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -531,9 +532,9 @@ function updateEarthquakeParam(time, scale, name, magnitude, depth, tsunami) {
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
     const formatted_time = `${month}/${day} ${hours}:${minutes}`;
-    document.getElementsByClassName("latest-card_date")[0].textContent = `${formatted_time}ごろ発生`;
+    card.querySelector(".latest-card_date").textContent = `${formatted_time}ごろ発生`;
 
-    const magnitude_class = document.getElementsByClassName("latest-card_magnitude")[0];
+    const magnitude_class = card.querySelector(".latest-card_magnitude");
     if (Number(magnitude) === -1) {
         magnitude_class.textContent = "調査中";
         magnitude_class.classList.add("investigate-text");
@@ -542,7 +543,7 @@ function updateEarthquakeParam(time, scale, name, magnitude, depth, tsunami) {
         magnitude_class.classList.remove("investigate-text");
     }
 
-    const depth_class = document.getElementsByClassName("latest-card_depth")[0];
+    const depth_class = card.querySelector(".latest-card_depth");
     const num_depth = Number(depth);
     if (num_depth === -1) {
         depth_class.textContent = "調査中";
@@ -572,7 +573,7 @@ function updateEarthquakeParam(time, scale, name, magnitude, depth, tsunami) {
         "Warning": "tsunami-warn",
     };
 
-    const tsunami_class = document.getElementsByClassName("latest-card_tsunami")[0];
+    const tsunami_class = card.querySelector(".latest-card_tsunami");
     Object.values(tsunamiClassMap).forEach(cls => tsunami_class.classList.remove(cls));
     tsunami_class.textContent = tsunamiCommentMap[tsunami] || "情報なし";
     if (tsunamiClassMap[tsunami]) tsunami_class.classList.add(tsunamiClassMap[tsunami]);
@@ -979,38 +980,52 @@ function injectEewCardStyle() {
             color: #fff;
             border-radius: 10px;
             padding: 0;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         }
         .eew-card__title {
             font-size: 14px;
-            font-weight: bold;
+            font-weight: 500;
             text-align: center;
-            padding: 8px 12px;
+            padding: 6px 12px;
             background: #a11717;
             letter-spacing: 0.05em;
         }
         .eew-card__body {
-            padding: 10px 14px 8px;
+            padding: 10px 14px 12px;
         }
         .eew-card__time {
             font-size: 13px;
-            color: #aab0be;
+            color: #fff;
             margin-bottom: 2px;
         }
         .eew-card__location {
             font-size: 20px;
-            font-weight: bold;
+            font-weight: 450;
             line-height: 1.2;
         }
         .eew-card__location-sub {
             font-size: 12px;
-            color: #aab0be;
+            color: #fff;
             margin-bottom: 6px;
         }
+        .eew-card p {
+            margin: 0;
+        }
         .eew-card .latest-card_maxscale {
-            margin: 6px 0 8px;
+            margin: 12px 0;
+            padding: 0 16px;
+            height: 65px;
+        }
+        .eew-card .latest-card_maxscale-label {
+            font-size: 16px;
+        }
+        .eew-card .latest-card_maxscale-txt {
+            font-size: 38px;
+        }
+        .eew-card .scale_modifier {
+            font-size: 14px;
         }
     `;
     document.head.appendChild(style);
@@ -1061,7 +1076,7 @@ function hideEewCard() {
 }
 
 const EEW_CARD_TEST_SAMPLE = {
-    name: "能登半島沖テスト",
+    name: "能登半島沖",
     magnitude: 6.2,
     depthText: "12km",
     intensity: "5弱",
@@ -1225,6 +1240,8 @@ connectEewWs();
 if (CONFIG.isTest) {
     createEewPreviewControl();
 }
+
+showTestEewCardPreview();
 
 function startEewBlink() {
     if (eewBlinkInterval) return;
