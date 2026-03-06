@@ -850,23 +850,19 @@ function updatePSWave() {
     $.getJSON(`https://eqf-worker.spdev-3141.workers.dev/api/kyoshin/${dateStr}/${timeStr}.json?t=${now.getTime()}`)
         .done(function(yahoo_data) {
             if (!yahoo_data.psWave || !yahoo_data.hypoInfo?.items?.[0]) {
+                if (interpolationData.active) {
+                    if (shindoCanvasLayer) shindoCanvasLayer._canvas.style.display = '';
+                    map.getPane('pane_map_filled').style.display = '';
+                    map.getPane('shingen').style.display = '';
+                    hideEewCard();
+                    if (eewHypoMarker) { eewHypoMarker.remove(); eewHypoMarker = null; }
+                    stopEewBlink();
+                }
                 interpolationData.active = false;
                 pwave.setRadius(0);
                 swave.setRadius(0);
-                if (eewHypoMarker) eewHypoMarker.remove();
-                eewHypoMarker = null;
-
-                stopEewBlink();
-
-                if (shindoCanvasLayer) shindoCanvasLayer._canvas.style.display = '';
-                map.getPane('pane_map_filled').style.display = '';
-                map.getPane('shingen').style.display = '';
                 return;
             }
-
-            if (shindoCanvasLayer) shindoCanvasLayer._canvas.style.display = 'none';
-            map.getPane('pane_map_filled').style.display = 'none';
-            map.getPane('shingen').style.display = 'none';
 
             const psItem = yahoo_data.psWave.items[0];
             const hypoItem = yahoo_data.hypoInfo.items[0];
@@ -878,20 +874,14 @@ function updatePSWave() {
             const originTime = new Date(hypoItem.originTime);
             const depthMatch = hypoItem.depth.match(/^(\d+)/);
             const depthVal = depthMatch ? parseFloat(depthMatch[1]) : 0;
-            interpolationData.depth = depthVal; 
 
             const elapsedSinceOrigin = (now - originTime) / 1000;
             const pRadiusYahoo = parseFloat(psItem.pRadius);
             const sRadiusYahoo = parseFloat(psItem.sRadius);
 
             if (elapsedSinceOrigin > 0) {
-                const adjustedPVelocity = Math.sqrt(pRadiusYahoo * pRadiusYahoo + depthVal * depthVal) / elapsedSinceOrigin;
-                const adjustedSVelocity = Math.sqrt(sRadiusYahoo * sRadiusYahoo + depthVal * depthVal) / elapsedSinceOrigin;
-
-                WAVE_VELOCITY.P = adjustedPVelocity;
-                WAVE_VELOCITY.S = adjustedSVelocity;
-                
-                console.log(`速度補正: P=${adjustedPVelocity.toFixed(2)} km/s, S=${adjustedSVelocity.toFixed(2)} km/s, 深さ=${depthVal}km`);
+                WAVE_VELOCITY.P = Math.sqrt(pRadiusYahoo ** 2 + depthVal ** 2) / elapsedSinceOrigin;
+                WAVE_VELOCITY.S = Math.sqrt(sRadiusYahoo ** 2 + depthVal ** 2) / elapsedSinceOrigin;
             }
 
             interpolationData.active = true;
@@ -901,19 +891,6 @@ function updatePSWave() {
             interpolationData.lastPRadius = pRadiusYahoo;
             interpolationData.lastSRadius = sRadiusYahoo;
             interpolationData.lastCheckTime = now;
-
-            const eewIcon = L.icon({
-                iconUrl: 'source/eew-shingen.png',
-                iconSize: [40, 40],
-                iconAnchor: [20, 20],
-            });
-            
-            if (!eewHypoMarker) {
-                eewHypoMarker = L.marker(center, { icon: eewIcon, pane: "eew_shingen" }).addTo(map);
-                startEewBlink();
-            } else {
-                eewHypoMarker.setLatLng(center);
-            }
 
             drawWaveCircles(now);
         })
@@ -973,18 +950,6 @@ function checkDiscrepancy(calculatedRadius, yahooRadius) {
     return 0.2;
 }
 
-function startEewBlink() {
-    if (eewBlinkInterval) return;
-    
-    eewBlinkState = true;
-    eewBlinkInterval = setInterval(() => {
-        eewBlinkState = !eewBlinkState;
-        if (eewHypoMarker) {
-            eewHypoMarker.setOpacity(eewBlinkState ? 1.0 : 0.1);
-        }
-    }, 500);
-}
-
 function stopEewBlink() {
     if (eewBlinkInterval) {
         clearInterval(eewBlinkInterval);
@@ -999,3 +964,342 @@ setInterval(updatePSWave, 1000);
 updatePSWave();
 
 requestAnimationFrame(interpolateAndDraw);
+
+let eewCardEl = null;
+let eewStyleInjected = false;
+let eewPreviewBtn = null;
+let eewPreviewActive = false;
+
+function injectEewCardStyle() {
+    if (eewStyleInjected) return;
+    const style = document.createElement('style');
+    style.textContent = `
+        .eew-card {
+            background: #1a2030;
+            color: #fff;
+            border-radius: 10px;
+            padding: 0;
+            margin-bottom: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .eew-card__title {
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            padding: 8px 12px;
+            background: #a11717;
+            letter-spacing: 0.05em;
+        }
+        .eew-card__body {
+            padding: 10px 14px 8px;
+        }
+        .eew-card__time {
+            font-size: 13px;
+            color: #aab0be;
+            margin-bottom: 2px;
+        }
+        .eew-card__location {
+            font-size: 20px;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        .eew-card__location-sub {
+            font-size: 12px;
+            color: #aab0be;
+            margin-bottom: 6px;
+        }
+        .eew-card__intensity-block {
+            margin: 6px 0 8px !important;
+        }
+
+        /* 追加: EEWカード内の震度ブロックを正方形中央寄せにする */
+        .eew-card .latest-card_maxscale {
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            box-sizing: border-box;
+        }
+        .eew-card .latest-card_maxscale-txt {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+            margin: 0;
+            padding: 0;
+        }
+        .eew-card .latest-card_maxscale-label {
+            font-size: 12px;
+            color: #aab0be;
+            margin: 0 0 6px 0;
+            text-align: center;
+        }
+        .eew-card .scale_modifier {
+            font-size: 10px;
+            vertical-align: top;
+            margin-left: 1px;
+        }
+    `;
+    document.head.appendChild(style);
+    eewStyleInjected = true;
+}
+
+function ensureEewCard() {
+    injectEewCardStyle();
+    if (eewCardEl) return eewCardEl;
+
+    eewCardEl = document.createElement('div');
+    eewCardEl.className = 'eew-card';
+    eewCardEl.innerHTML = `
+        <div class="eew-card__title">#N 緊急地震速報 警報</div>
+        <div class="eew-card__body">
+            <div class="eew-card__time" data-k="time">-</div>
+            <div class="eew-card__location" data-k="name">-</div>
+            <div class="eew-card__location-sub">で地震</div>
+            <div class="eew-card__intensity-block latest-card_maxscale null-bg" data-k="intensity-block">
+                <p class="latest-card_maxscale-label">予想最大震度</p>
+                <p class="latest-card_maxscale-txt" data-k="intensity">-</p>
+            </div>
+            <div class="latest-card_hypo-params">
+                <div class="latest-card_hypo-params_txt">
+                    <p class="latest-card_hypo-params_label">マグニチュード</p>
+                    <p class="latest-card_magnitude" data-k="mag">-</p>
+                </div>
+                <div class="latest-card_hypo-params_txt">
+                    <p class="latest-card_hypo-params_label">深さ</p>
+                    <p class="latest-card_depth" data-k="depth">-</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const panel = document.querySelector('.side-panel');
+    if (panel) panel.prepend(eewCardEl);
+
+    return eewCardEl;
+}
+
+function hideEewCard() {
+    if (eewCardEl) {
+        eewCardEl.remove();
+        eewCardEl = null;
+    }
+    setTestEewPreviewState(false);
+}
+
+const EEW_CARD_TEST_SAMPLE = {
+    name: "能登半島沖テスト",
+    magnitude: 6.2,
+    depthText: "12km",
+    intensity: "5弱",
+};
+
+function buildTestEewCardPayload() {
+    const originTime = new Date(Date.now() - 3 * 60 * 1000);
+    return {
+        originTime: originTime.toISOString(),
+        name: EEW_CARD_TEST_SAMPLE.name,
+        magnitude: EEW_CARD_TEST_SAMPLE.magnitude,
+        depthText: EEW_CARD_TEST_SAMPLE.depthText,
+        intensity: EEW_CARD_TEST_SAMPLE.intensity,
+    };
+}
+
+function showTestEewCardPreview() {
+    updateEewCard(buildTestEewCardPayload());
+}
+
+function setTestEewPreviewState(active) {
+    eewPreviewActive = active;
+    if (eewPreviewBtn) {
+        eewPreviewBtn.textContent = active ? 'カードを閉じる' : 'EEWカード確認';
+    }
+}
+
+function createEewPreviewControl() {
+    const detail = document.getElementById('voice-detail');
+    if (!detail) return;
+
+    const row = document.createElement('div');
+    row.className = 'voice-param-row';
+
+    const label = document.createElement('span');
+    label.className = 'voice-param-label';
+    label.textContent = 'EEWカード（テスト）';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'voice-test-btn voice-eew-preview-btn';
+    btn.textContent = 'EEWカード確認';
+    btn.addEventListener('click', () => {
+        if (eewPreviewActive) {
+            hideEewCard();
+            setTestEewPreviewState(false);
+        } else {
+            showTestEewCardPreview();
+            setTestEewPreviewState(true);
+        }
+    });
+
+    row.style.flexDirection = 'column';
+    row.style.alignItems    = 'flex-start';
+    row.style.gap           = '6px';
+    btn.style.alignSelf     = 'stretch';
+    btn.style.textAlign     = 'center';
+
+    row.append(label, btn);
+    detail.appendChild(row);
+    eewPreviewBtn = btn;
+}
+
+function formatDateTimeJa(date) {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return "不明";
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const s = String(d.getSeconds()).padStart(2, "0");
+    return `${m}/${day} ${h}:${min}:${s}`;
+}
+
+let eewWs = null;
+
+function connectEewWs() {
+    const wsUrl = "https://eqf-worker.spdev-3141.workers.dev/parties/chat/main";
+    eewWs = new WebSocket(wsUrl);
+
+    eewWs.addEventListener("message", (event) => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+
+        // Wolfxのjma_eewデータか判定
+        if (data.type !== "jma_eew") return;
+        if (data.isCancel) {
+            hideEewCard();
+            pwave.setRadius(0);
+            swave.setRadius(0);
+            interpolationData.active = false;
+            if (eewHypoMarker) { eewHypoMarker.remove(); eewHypoMarker = null; }
+            stopEewBlink();
+            return;
+        }
+
+        const lat = data.Latitude;
+        const lng = data.Longitude;
+        const depthVal = data.Depth ?? 0;
+        const originTime = new Date(data.OriginTime.replace(" ", "T"));
+        const center = new L.LatLng(lat, lng);
+
+        // 波動補間データ更新
+        const now = CONFIG.getSimulatedTime();
+        const elapsedSinceOrigin = (now - originTime) / 1000;
+        if (elapsedSinceOrigin > 0) {
+            const pDist = WAVE_VELOCITY.P * elapsedSinceOrigin;
+            const sDist = WAVE_VELOCITY.S * elapsedSinceOrigin;
+            interpolationData.lastPRadius = Math.sqrt(Math.max(0, pDist * pDist - depthVal * depthVal));
+            interpolationData.lastSRadius = Math.sqrt(Math.max(0, sDist * sDist - depthVal * depthVal));
+        }
+
+        interpolationData.active = true;
+        interpolationData.hypoCenter = center;
+        interpolationData.originTime = originTime;
+        interpolationData.depth = depthVal;
+        interpolationData.lastCheckTime = now;
+
+        // 震源マーカー
+        const eewIcon = L.icon({
+            iconUrl: 'source/eew-shingen.png',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+        });
+        if (!eewHypoMarker) {
+            eewHypoMarker = L.marker(center, { 
+                icon: eewIcon, 
+                pane: "eew_shingen"
+            }).addTo(map);
+            startEewBlink();
+        } else {
+            eewHypoMarker.setLatLng(center);
+        }
+
+        // 強震マップ非表示
+        if (shindoCanvasLayer) shindoCanvasLayer._canvas.style.display = 'none';
+        map.getPane('pane_map_filled').style.display = 'none';
+        map.getPane('shingen').style.display = 'none';
+
+        updateEewCard({
+            originTime, 
+            name: data.Hypocenter,
+            magnitude: data.Magunitude,
+            depthText: `${depthVal}km`,
+            intensity: data.MaxIntensity ?? "-",
+        });
+        setTestEewPreviewState(false);
+    });
+
+    eewWs.addEventListener("close", () => {
+        console.log("EEW WS closed, reconnecting...");
+        setTimeout(connectEewWs, 3000);
+    });
+    eewWs.addEventListener("error", () => {
+        eewWs.close();
+    });
+}
+
+connectEewWs();
+
+if (CONFIG.isTest) {
+    createEewPreviewControl();
+}
+
+function startEewBlink() {
+    if (eewBlinkInterval) return;
+    eewBlinkState = true;
+    eewBlinkInterval = setInterval(() => {
+        eewBlinkState = !eewBlinkState;
+        if (eewHypoMarker) eewHypoMarker.setOpacity(eewBlinkState ? 1.0 : 0.1);
+    }, 500);
+}
+
+function updateEewCard({ originTime, name, magnitude, depthText, intensity }) {
+    const card = ensureEewCard();
+    const set = (key, val) => {
+        const el = card.querySelector(`[data-k="${key}"]`);
+        if (el) el.textContent = val;
+    };
+    const d = new Date(originTime);
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    set("time", `${m}/${day} ${h}:${min}ごろ発生`);
+    set("name", name || "不明");
+    set("mag", magnitude != null ? Number(magnitude).toFixed(1) : "?");
+    set("depth", depthText || "不明");
+
+    // 予想最大震度：色クラス + 数字/修飾子フォーマット
+    const intensityStr = String(intensity ?? "-");
+    const iMatch = intensityStr.match(/^(\d)([^\d]*)$/);
+    const iNumber = iMatch ? iMatch[1] : intensityStr;
+    const iModifier = iMatch ? iMatch[2] : "";
+
+    const intensityBlock = card.querySelector('[data-k="intensity-block"]');
+    const intensityTxt   = card.querySelector('[data-k="intensity"]');
+    const intensityLabel = card.querySelector('.latest-card_maxscale-label');
+
+    if (intensityTxt) {
+        intensityTxt.innerHTML = `${iNumber}<span class="scale_modifier">${iModifier}</span>`;
+    }
+    if (intensityBlock) {
+        Object.values(scaleClassMap).forEach(cls => intensityBlock.classList.remove(cls));
+        const bgClass = scaleClassMap[intensityStr] || 'null-bg';
+        intensityBlock.classList.add(bgClass);
+        const isDark = iNumber === "3" || iNumber === "4";
+        if (intensityTxt)  intensityTxt.style.color  = isDark ? "#000" : "";
+        if (intensityLabel) intensityLabel.style.color = isDark ? "#000" : "";
+    }
+}
