@@ -1009,38 +1009,8 @@ function injectEewCardStyle() {
             color: #aab0be;
             margin-bottom: 6px;
         }
-        .eew-card__intensity-block {
-            margin: 6px 0 8px !important;
-        }
-
-        /* 追加: EEWカード内の震度ブロックを正方形中央寄せにする */
         .eew-card .latest-card_maxscale {
-            width: 56px;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-            margin-bottom: 6px;
-            box-sizing: border-box;
-        }
-        .eew-card .latest-card_maxscale-txt {
-            font-size: 20px;
-            font-weight: 700;
-            line-height: 1;
-            margin: 0;
-            padding: 0;
-        }
-        .eew-card .latest-card_maxscale-label {
-            font-size: 12px;
-            color: #aab0be;
-            margin: 0 0 6px 0;
-            text-align: center;
-        }
-        .eew-card .scale_modifier {
-            font-size: 10px;
-            vertical-align: top;
-            margin-left: 1px;
+            margin: 6px 0 8px;
         }
     `;
     document.head.appendChild(style);
