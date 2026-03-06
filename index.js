@@ -1239,9 +1239,8 @@ connectEewWs();
 
 if (CONFIG.isTest) {
     createEewPreviewControl();
+    showTestEewCardPreview();
 }
-
-showTestEewCardPreview();
 
 function startEewBlink() {
     if (eewBlinkInterval) return;
