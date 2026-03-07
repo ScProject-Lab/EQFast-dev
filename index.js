@@ -151,12 +151,20 @@ const shindoFillColorMap = {
     70: "#4a0083",   // 7
 };
 
-$.getJSON("source/saibun.geojson", function (data) {
-    japan_data = data;
-    L.geoJson(data, {
-        pane: "pane_map3",
-        style: PolygonLayer_Style
-    }).addTo(map);
+const japanDataReady = new Promise((resolve, reject) => {
+    $.getJSON("source/saibun.geojson")
+        .done((data) => {
+            japan_data = data;
+            L.geoJson(data, {
+                pane: "pane_map3",
+                style: PolygonLayer_Style
+            }).addTo(map);
+            resolve(data);
+        })
+        .fail((_, textStatus, errorThrown) => {
+            console.error("Failed to load source/saibun.geojson:", textStatus, errorThrown);
+            reject(errorThrown || new Error(textStatus));
+        });
 });
 
 const scaleMap = {
@@ -200,6 +208,22 @@ function preloadIcons() {
             };
         });
     }));
+}
+
+function loadStationData() {
+    return new Promise((resolve, reject) => {
+        $.getJSON("source/JMAstations.json")
+            .done((data) => {
+                JMAPointsJson = data;
+                stationMap = {};
+                data.forEach((p) => { stationMap[p.name] = p; });
+                resolve(data);
+            })
+            .fail((_, textStatus, errorThrown) => {
+                console.error("Failed to load source/JMAstations.json:", textStatus, errorThrown);
+                reject(errorThrown || new Error(textStatus));
+            });
+    });
 }
 
 const ShindoCanvasLayer = L.Layer.extend({
@@ -283,17 +307,17 @@ const iconMap = {
     70: "int7"
 };
 
-preloadIcons().then(() => {
-    shindoCanvasLayer = new ShindoCanvasLayer();
-    shindoCanvasLayer.addTo(map);
+Promise.all([preloadIcons(), japanDataReady, loadStationData()])
+    .then(() => {
+        shindoCanvasLayer = new ShindoCanvasLayer();
+        shindoCanvasLayer.addTo(map);
 
-    $.getJSON("source/JMAstations.json", function (data) {
-        JMAPointsJson = data;
-        data.forEach(p => { stationMap[p.name] = p; });
         updateData();
         setInterval(updateData, CONFIG.updateInterval);
+    })
+    .catch((error) => {
+        console.error("Initial map data load failed:", error);
     });
-});
 
 const sidePanel = document.querySelector('.side-panel');
 let isDown = false;
@@ -993,7 +1017,7 @@ function injectEewCardStyle() {
             letter-spacing: 0.05em;
         }
         .eew-card__body {
-            padding: 10px 14px 12px;
+            padding: 12px 14px;
         }
         .eew-card__time {
             font-size: 13px;
@@ -1015,14 +1039,14 @@ function injectEewCardStyle() {
         }
         .eew-card .latest-card_maxscale {
             margin: 12px 0;
-            padding: 0 16px;
+            padding: 0 24px;
             height: 65px;
         }
         .eew-card .latest-card_maxscale-label {
             font-size: 16px;
         }
         .eew-card .latest-card_maxscale-txt {
-            font-size: 38px;
+            font-size: 40px;
         }
         .eew-card .scale_modifier {
             font-size: 14px;
@@ -1077,9 +1101,9 @@ function hideEewCard() {
 
 const EEW_CARD_TEST_SAMPLE = {
     name: "能登半島沖",
-    magnitude: 6.2,
-    depthText: "12km",
-    intensity: "5弱",
+    magnitude: 7.4,
+    depthText: "10km",
+    intensity: "7",
 };
 
 function buildTestEewCardPayload() {
